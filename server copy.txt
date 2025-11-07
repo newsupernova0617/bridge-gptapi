@@ -116,7 +116,7 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // .env
 });
 
-const genAI  = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY,});
+const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY,});
 
 
 
@@ -127,70 +127,120 @@ app.get('/', (req, res) => {
 });
 
 // ✅ 리포트 생성 엔드포인트
-app.post("/report", async (req, res) => {
+app.get("/report", async (req, res) => {
   try {
-    const input_json = req.body;
+    const input_json = await req.body;
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash", // 또는 gemini-2.5-flash (빠른 응답)
-      systemInstruction: `
+    const response = await client.responses.create({
+      model: "gpt-5-mini",
+      reasoning: { effort: "high" },
+      instructions: `
+### role ###
+
 너는 10년차 CX팀 리더야. 8주간의 상담태그 데이터를 확인하고 태그별 증감 추이를 확인해서 인사이트를 뽑아야 해.
 
 인사이트는 아래에 주어지는 data와 기업 특이사항을 반영해서 인사이트를 뽑아줘.
 
 1. 이전 4주와 비교해 과하게 증가/감소한 태그
+
 1-1. 증감한 이유를 기업 특이사항에서 찾아야 해
+
 1-2. 증감한 비율을 명확하게 언급해야해. (ex: 전주 대비 50% 감소)
 
 2. 기업 특이사항에 언급된 태그
+
 2-1.기업 특이사항에서 언급된 예상치에 비해 많이 벗어나는 경우 인사이트로 설명 (ex: 블랙프라이데이 세일로 인해 100건 정도 들어올 것으로 예상한 환불문의가 4건만 들어와서 이례적인 수치이다)
 
 3. 인사이트는 한국어를 디폴트로 하고 영어와 일본어는 한국어를 기반으로 번역해서 뽑아줘
 
 4. 출력형식은 json으로 ,형식은 다음과 같이 만들어줘
 {
-  "kor": {
-    "greeting_kor": {인사말},
-    "insight1_kor": {첫번째 인사이트},
-    "insight2_kor": {두번째 인사이트},
-    "insight3_kor": {세번째 인사이트}
-  },
-  "eng": {
-    "greeting_eng": "{인사말}",
-    "insight1_eng": {한국어 첫번째 인사이트 영어 번역본},
-    "insight2_eng": {한국어 두번째 인사이트 영어 번역본},
-    "insight3_eng": {한국어 세번째 인사이트 영어 번역본}
-  },
-  "jpn": {
-    "greeting_jpn": "{인사말}",
-    "insight1_jpn": {첫번째 인사이트 일본어 번역본},
-    "insight2_jpn": {두번째 인사이트 일본어 번역본},
-    "insight3_jpn": {세번째 인사이트 일본어 번역본}
-  }
+
+"kor":{"greeting_kor":{인사말},
+        "insight1_kor":{첫번째 인사이트},
+        "insight2_kor":{두번째 인사이트},
+        "insight3_kor":{세번째 인사이트},
+},
+
+"eng":{"greeting_eng":"{인사말}",
+        "insight1_eng":{한국어 첫번째 인사이트 영어 번역본},
+        "insight2_eng":{한국어 두번째 인사이트 영어 번역본},
+        "insight3_eng":{한국어 세번째 인사이트 영어 번역본},
+},
+
+"jpn":{"greeting_jpn":"{인사말}",
+        "insight1_jpn":{첫번째 인사이트 일본어 번역본},
+        "insight2_jpn":{두번째 인사이트 일본어 번역본},
+        "insight3_jpn":{세번째 인사이트 일본어 번역본},
+}
 }
 
 ### instruction ###
+
 입력으로 주어지는 JSON 데이터에는 고객 문의 통계와 주요 이슈 데이터가 포함되어 있어.
+
 Data를 분석하고 example를 참고해.
+
 ### output instruction ###
+
 {yearweek}
+
 {인사말}
+
 {고객 상담 인사이트 3줄}
+
+### output example ###
+
+{}안에 있는 말은 무시해줘 그냥 너에게 주는 참고용 이정표야
+
+형식:
+
+#example_1
+
+Yearweek:10월 3주차
+
+{인사말} 안녕하세요! 낙엽이 절정을 이루는 10월 3주차입니다. 지난 한 주간 고객들의 주요 문의사항을 분석했습니다.
+
+{고객 상담 인사이트 3줄}
+
+이번 주에는 새롭게 출시된 '가을 한정판' 패키지의 구성품 변경 가능 여부 문의가 가장 많았습니다. 현재 기획 의도와 맞지 않아 변경이 어렵다고 안내하고 있으나, 고객의 요구가 지속되어 긍정적인 검토가 필요해 보입니다.
+
+더불어 배송 지연에 대한 문의가 전 주 대비 2배 이상 급증했습니다. 이는 지난주부터 시작된 택배사의 파업 예고와 맞물린 현상으로 보이며, 고객들에게 정확한 지연 예상 일자를 공지하는 것이 시급합니다.
+
+덧붙여, 지난달부터 문제가 되었던 로그인 시 '비밀번호 5회 오류' 잠금 현상이 CS 채널로 접수된 건이 0건을 기록했습니다! 개발팀에서 적용한 '잠금 해제 간소화' 패치가 효과를 본 것으로 보입니다.
+
+#example_2
+
+Yearweek: 11월 4주차
+
+{인사말}
+
+안녕하세요! 쌀쌀한 날씨가 옷깃을 여미게 하는 11월 4주차입니다. 고객들의 목소리를 통해 이번 주의 주요 이슈를 파악해 봅시다.
+
+{고객 상담 인사이트 3줄}
+
+이번 주에는 '친구 추천' 이벤트 보상 지급 누락에 대한 문의가 다수 발생했습니다. 시스템 로그를 확인한 결과, 특정 OS 환경에서 추천 코드가 정상적으로 등록되지 않는 버그로 확인되어 빠른 시일 내 수정 및 일괄 지급이 필요합니다.
+
+더불어 오프라인 매장에서 기획상품 판매 요청이 눈에 띄게 늘었습니다. 연말 시즌을 앞두고 있어 고객들이 더 다양한 상품을 고객들이 실체로 체험하고 구매하기를 원하는 것으로 보입니다.
+
+덧붙여, 고객이 직접 주문 내역에서 배송지 주소를 변경할 수 있게 개선된 이후, '배송지 변경 요청' 관련 CS 접수 건수가 90% 이상 감소하는 긍정적인 효과를 확인했습니다!
+
+#example_3
+
+yearweek: 12월 1주차
+
+{인사말} 안녕하세요! 크리스마스 분위기가 물씬 느껴지는 12월의 첫째 주입니다. 지난 한 주간 고객센터로 접수된 주요 이슈들을 공유합니다.
+
+{고객 상담 인사이트 3줄}
+
+이번 주에는 크리스마스 한정 상품 품절 시점에 대한 문의와 불만이 폭발적으로 증가했습니다. 준비된 수량이 예상보다 빨리 소진되어, 고객들은 재입고 일정 및 예약 구매 가능 여부에 대한 명확한 답변을 강력하게 요구하고 있습니다.
+
+더불어 신규 결제 수단인 네이버페이 이용 시 할인쿠폰 미적용 오류 문의가 집중되었습니다. 시스템 연동 문제로 보이며, 고객의 불편 해소를 위해 결제팀의 긴급 점검이 필요합니다.
       `,
+      input: `다음 데이터를 분석해줘:\n\`\`\`json\n${JSON.stringify(input_json, null, 2)}\n\`\`\``,
     });
 
-    const prompt = `
-다음 데이터를 분석해줘:
-\`\`\`json
-${JSON.stringify(input_json, null, 2)}
-\`\`\`
-`;
-
-    // Gemini에 요청
-    const result = await model.generateContent(prompt);
-    const outputText = result.response.text();
-
-    res.status(200).send(outputText);
+    res.status(200).send(response.output_text);
   } catch (error) {
     console.error("❌ 오류 발생:", error);
     res.status(500).send(`서버 오류: ${error.message}`);
