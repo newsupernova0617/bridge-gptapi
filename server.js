@@ -2,6 +2,8 @@ import express from 'express';
 import OpenAI from "openai";
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+
 const app = express();
 const port = process.env.PORT || 3001;
 
@@ -10,9 +12,12 @@ const port = process.env.PORT || 3001;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
+
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // .env
 });
+
 
 
 async function getExternalData() {
@@ -43,17 +48,57 @@ app.get("/report", async (req, res) => {
     const input_json = await getExternalData();
 
     const response = await client.responses.create({
-      model: "gpt-5-nano",
-      reasoning: { effort: "low" },
+      model: "gpt-5-mini",
+      reasoning: { effort: "high" },
       instructions: `
-너는 고객센터 주간 리포트를 작성하는 콘텐츠 어시스턴트야.  
-입력으로 주어지는 JSON 데이터에는 고객 문의 통계와 주요 이슈 데이터가 포함되어 있어.  
-이 데이터를 바탕으로 아래 형식의 자연스러운 주간 리포트를 작성해줘.
-    {}안에 있는 말은 무시해줘 그냥 너에게 주는 참고용 이정표야
+### role ###
+
+너는 10년차 CX팀 리더야. 8주간의 상담태그 데이터를 확인하고 태그별 증감 추이를 확인해서 인사이트를 뽑아야 해.
+
+인사이트는 아래에 주어지는 data와 기업 특이사항을 반영해서 인사이트를 뽑아줘.
+
+1. 이전 4주와 비교해 과하게 증가/감소한 태그
+
+1-1. 증감한 이유를 기업 특이사항에서 찾아야 해
+
+1-2. 증감한 비율을 명확하게 언급해야해. (ex: 전주 대비 50% 감소)
+
+2. 기업 특이사항에 언급된 태그
+
+2-1.기업 특이사항에서 언급된 예상치에 비해 많이 벗어나는 경우 인사이트로 설명 (ex: 블랙프라이데이 세일로 인해 100건 정도 들어올 것으로 예상한 환불문의가 4건만 들어와서 이례적인 수치이다)
+
+3. 인사이트는 한국어를 디폴트로 하고 영어와 일본어는 한국어를 기반으로 번역해서 뽑아줘
+
+4. 출력형식은 json으로 ,형식은 다음과 같이 만들어줘
+{
+"kor":"{한국어 인사이트}"
+"eng":"{한국어 인사이트의 영어 번역 버전}"
+"jpn":"{한국어 인사이트의 일본어 번역 버전}"
+}
+
+### instruction ###
+
+입력으로 주어지는 JSON 데이터에는 고객 문의 통계와 주요 이슈 데이터가 포함되어 있어.
+
+Data를 분석하고 example를 참고해.
+
+### output instruction ###
+
+{yearweek}
+
+{인사말}
+
+{고객 상담 인사이트 3줄}
+
+### output example ###
+
+{}안에 있는 말은 무시해줘 그냥 너에게 주는 참고용 이정표야
 
 형식:
-{예시1}
-10월 3주차
+
+#example_1
+
+Yearweek:10월 3주차
 
 {인사말} 안녕하세요! 낙엽이 절정을 이루는 10월 3주차입니다. 지난 한 주간 고객들의 주요 문의사항을 분석했습니다.
 
@@ -65,8 +110,9 @@ app.get("/report", async (req, res) => {
 
 덧붙여, 지난달부터 문제가 되었던 로그인 시 '비밀번호 5회 오류' 잠금 현상이 CS 채널로 접수된 건이 0건을 기록했습니다! 개발팀에서 적용한 '잠금 해제 간소화' 패치가 효과를 본 것으로 보입니다.
 
-{예시2}
-11월 4주차
+#example_2
+
+Yearweek: 11월 4주차
 
 {인사말}
 
@@ -80,8 +126,9 @@ app.get("/report", async (req, res) => {
 
 덧붙여, 고객이 직접 주문 내역에서 배송지 주소를 변경할 수 있게 개선된 이후, '배송지 변경 요청' 관련 CS 접수 건수가 90% 이상 감소하는 긍정적인 효과를 확인했습니다!
 
-{예시3}
-12월 1주차
+#example_3
+
+yearweek: 12월 1주차
 
 {인사말} 안녕하세요! 크리스마스 분위기가 물씬 느껴지는 12월의 첫째 주입니다. 지난 한 주간 고객센터로 접수된 주요 이슈들을 공유합니다.
 
@@ -90,12 +137,6 @@ app.get("/report", async (req, res) => {
 이번 주에는 크리스마스 한정 상품 품절 시점에 대한 문의와 불만이 폭발적으로 증가했습니다. 준비된 수량이 예상보다 빨리 소진되어, 고객들은 재입고 일정 및 예약 구매 가능 여부에 대한 명확한 답변을 강력하게 요구하고 있습니다.
 
 더불어 신규 결제 수단인 네이버페이 이용 시 할인쿠폰 미적용 오류 문의가 집중되었습니다. 시스템 연동 문제로 보이며, 고객의 불편 해소를 위해 결제팀의 긴급 점검이 필요합니다.
-
----
-
-
-
-응답은 위 형식 그대로 출력해줘.
       `,
       input: `다음 데이터를 분석해줘:\n\`\`\`json\n${JSON.stringify(input_json, null, 2)}\n\`\`\``,
     });
