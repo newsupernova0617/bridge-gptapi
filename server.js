@@ -2,17 +2,113 @@ import express from 'express';
 import OpenAI from "openai";
 import path from 'path';
 import { fileURLToPath } from 'url';
-
+import Database from 'better-sqlite3';
+import { v4 as uuidv4 } from 'uuid';
+import dayjs from 'dayjs';
+import fs from 'fs';
 
 const app = express();
 const port = process.env.PORT || 3001;
 
-
+app.use(express.json());
 // __dirname 대체 (ESM에서는 직접 사용 불가)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// DB 폴더가 없으면 생성
+const dbDir = path.join(__dirname, 'db');
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir);
+}
 
+// DB 연결
+const dbPath = path.join(dbDir, 'database.sqlite');
+const db = new Database(dbPath);
+
+// 테이블 생성 (없으면 생성)
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS chats (
+    id TEXT PRIMARY KEY,
+    tags JSON,
+    chat_created_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+`).run();
+
+// 가능한 tags 리스트
+const TAGS = [
+  '교환', '교환/사이즈', '교환/컬러', '교환/사이즈/재고문의',
+  '배송', '배송/운송장조회',
+  '매장문의', '매장문의/강남점', '매장문의/역삼점', '매장문의/신촌점', '매장문의/안암점',
+  '매장문의/강남점/운영시간', '매장문의/역삼점/운영시간', '매장문의/신촌점/운영시간', '매장문의/안암점/운영시간',
+  '매장문의/강남점/프로모션', '매장문의/역삼점/프로모션', '매장문의/신촌점/프로모션', '매장문의/안암점/프로모션',
+  '매장문의/강남점/재고문의', '매장문의/역삼점/재고문의', '매장문의/신촌점/재고문의', '매장문의/안암점/재고문의',
+  '매장문의/교환환불안내',
+  '결제', '결제/환불', '결제/환불/환불정책', '결제/환불/네이버페이', '결제/환불/카카오페이',
+  '결제/환불/무통장입금', '결제/환불/신용카드',
+  '결제/사이트오류/모바일앱', '결제/수단문의',
+  '사이트오류', '사이트오류/모바일앱',
+  '건의사항', '건의사항/상품추가요청', '건의사항/서비스개선',
+  '결제/결제수단문의/네이버페이', '결제/결제수단문의/무통장입금', '결제/결제수단문의/신용카드', '결제/결제수단문의/카카오페이',
+  '결제/내역문의', '결제/결제수단문의', '결제/방법안내',
+  '교환/온라인', '상품문의', '상품문의/신상품', '상품문의/기타'
+];
+
+// 랜덤 날짜 생성 (2020-10-01 ~ 2020-10-31)
+function randomDate() {
+  const start = dayjs('2020-10-01');
+  const end = dayjs('2020-10-31');
+  const diff = end.diff(start, 'day');
+  const randomDays = Math.floor(Math.random() * (diff + 1));
+  return start.add(randomDays, 'day').format('YYYY-MM-DD HH:mm:ss');
+}
+
+// mock 데이터 생성
+function generateMock() {
+  const id = uuidv4();
+  const randomTags = [];
+
+  // 태그 1~3개 랜덤 선택
+  const numTags = Math.floor(Math.random() * 3) + 1;
+  for (let i = 0; i < numTags; i++) {
+    randomTags.push(TAGS[Math.floor(Math.random() * TAGS.length)]);
+  }
+
+  const date = randomDate();
+
+  return {
+    id,
+    tags: JSON.stringify(randomTags),
+    chat_created_at: date,
+    created_at: date,
+    updated_at: date
+  };
+}
+
+// mock 데이터 삽입
+app.all('/seed', (req, res) => {
+  const count = req.body.count || 50000;
+  const insert = db.prepare(`
+    INSERT INTO chats (id, tags, chat_created_at, created_at, updated_at)
+    VALUES (@id, @tags, @chat_created_at, @created_at, @updated_at)
+  `);
+
+  const insertMany = db.transaction((records) => {
+    for (const record of records) insert.run(record);
+  });
+
+  const mocks = Array.from({ length: count }, generateMock);
+  insertMany(mocks);
+
+  res.json({ message: `${count}개의 mock 데이터가 삽입되었습니다.` });
+});
+
+// 전체 데이터 조회
+app.get('/chats', (req, res) => {
+  const rows = db.prepare('SELECT * FROM chats').all();
+  res.json(rows);
+});
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // .env
@@ -20,22 +116,7 @@ const client = new OpenAI({
 
 
 
-async function getExternalData() {
-  // const response = await fetch("https://api.example.com/data");
-  // if (!response.ok) {
-  //   throw new Error(`외부 API 요청 실패: ${response.status}`);
-  // }
-  // const json = await response.json();
-  // return json; // JSON 객체 반환
-  return {
-    week: "2025년 11월 2주차",
-    top_issues: ["카카오페이 환불", "강남점 운영시간 문의"],
-    resolved_issues: ["결제 오류"],
-    promotion: "카카오페이 결제 프로모션",
-    event: "블랙프라이데이",
-    team_fix: "안드로이드 팀",
-  };
-}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -45,7 +126,7 @@ app.get('/', (req, res) => {
 // ✅ 리포트 생성 엔드포인트
 app.get("/report", async (req, res) => {
   try {
-    const input_json = await getExternalData();
+    const input_json = await req.body;
 
     const response = await client.responses.create({
       model: "gpt-5-mini",
@@ -71,9 +152,24 @@ app.get("/report", async (req, res) => {
 
 4. 출력형식은 json으로 ,형식은 다음과 같이 만들어줘
 {
-"kor":"{한국어 인사이트}"
-"eng":"{한국어 인사이트의 영어 번역 버전}"
-"jpn":"{한국어 인사이트의 일본어 번역 버전}"
+
+"kor":{"greeting_kor":{인사말},
+        "insight1_kor":{첫번째 인사이트},
+        "insight2_kor":{두번째 인사이트},
+        "insight3_kor":{세번째 인사이트},
+},
+
+"eng":{"greeting_eng":"{인사말}",
+        "insight1_eng":{한국어 첫번째 인사이트 영어 번역본},
+        "insight2_eng":{한국어 두번째 인사이트 영어 번역본},
+        "insight3_eng":{한국어 세번째 인사이트 영어 번역본},
+},
+
+"jpn":{"greeting_jpn":"{인사말}",
+        "insight1_jpn":{첫번째 인사이트 일본어 번역본},
+        "insight2_jpn":{두번째 인사이트 일본어 번역본},
+        "insight3_jpn":{세번째 인사이트 일본어 번역본},
+}
 }
 
 ### instruction ###
@@ -145,6 +241,45 @@ yearweek: 12월 1주차
   } catch (error) {
     console.error("❌ 오류 발생:", error);
     res.status(500).send(`서버 오류: ${error.message}`);
+  }
+});
+
+
+
+
+app.get("/follow_up", async (req, res) => {
+  try {
+    const input_json = await getExternalData();
+
+    if (!input_json || input_json.length === 0) {
+      return res.status(400).json({ error: "입력 일정 데이터가 비어있습니다." });
+    }
+
+    const response = await client.responses.create({
+      model: "gpt-5-nano",
+      reasoning: { effort: "low" },
+      instructions: 
+    //   프롬프트 다시 봐야함
+    `
+너는 json안의 tags의 중요도를 1~5로 평가하는 AI야.
+중요도 5가 가장 중요하고, 중요도 1이 가장 중요하지 않아.
+입력은 JSON 배열 형태의 특이사항들이고, json안에 tags 필드가 있어, 이 값을 보고 
+각 json에 "priority" 필드를 추가해서 JSON 배열로 그대로 반환해줘.
+
+
+      `,
+      input: `다음 tags들의 중요도를 1~5로 판별:\n\`\`\`json\n${JSON.stringify(input_json, null, 2)}\n\`\`\``,
+    });
+
+    const outputText =
+      response.output_text ||
+      response.output?.[0]?.content?.[0]?.text ||
+      "출력 형식을 확인하세요.";
+
+    res.status(200).json({ result: outputText });
+  } catch (error) {
+    console.error("❌ 오류 발생:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
