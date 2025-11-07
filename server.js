@@ -127,9 +127,9 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+
 // ✅ 리포트 생성 엔드포인트
-// ✅ 리포트 생성 엔드포인트
-app.all("/report", async (req, res) => {
+app.post("/report", async (req, res) => {
   try {
     const input_json = await req.body;
 
