@@ -135,7 +135,7 @@ app.post("/report", async (req, res) => {
 
     const response = await client.responses.create({
       model: "gpt-5-mini",
-      reasoning: { effort: "high" },
+      reasoning: { effort: "minimal" },
       instructions: `
 ### role ###
 
