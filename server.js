@@ -1,10 +1,14 @@
 import express from 'express';
 import OpenAI from "openai";
-
+import path from 'path';
+import { fileURLToPath } from 'url';
 const app = express();
 const port = process.env.PORT || 3001;
 
 
+// __dirname 대체 (ESM에서는 직접 사용 불가)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // .env
@@ -89,17 +93,7 @@ app.get("/report", async (req, res) => {
 
 ---
 
-입력 데이터 예시(JSON):
-{
-  "week": "2025년 11월 2주차",
-  "top_issues": ["카카오페이 환불", "강남점 운영시간 문의"],
-  "resolved_issues": ["결제 오류"],
-  "promotion": "카카오페이 결제 프로모션",
-  "event": "블랙프라이데이",
-  "team_fix": "안드로이드 팀"
-}
 
----
 
 응답은 위 형식 그대로 출력해줘.
       `,
