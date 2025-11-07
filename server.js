@@ -29,6 +29,11 @@ async function getExternalData() {
     team_fix: "안드로이드 팀",
   };
 }
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ✅ 리포트 생성 엔드포인트
 app.get("/report", async (req, res) => {
